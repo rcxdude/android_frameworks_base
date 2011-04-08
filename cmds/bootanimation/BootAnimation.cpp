@@ -47,6 +47,11 @@
 #include <GLES/glext.h>
 #include <EGL/eglext.h>
 
+#include <cutils/logd.h>
+#include <cutils/logprint.h>
+#include <cutils/event_tag_map.h>
+#include <cutils/logger.h>
+
 #include "BootAnimation.h"
 
 namespace android {
@@ -64,6 +69,13 @@ BootAnimation::~BootAnimation() {
 void BootAnimation::onFirstRef() {
     status_t err = mSession->linkToComposerDeath(this);
     LOGE_IF(err, "linkToComposerDeath failed (%s) ", strerror(-err));
+    LOGD("hellloooo");
+    char *line;
+    initLogDevice();
+    if (getLogLine(&line)) {
+        LOGD("first line read: %s",line);
+        delete line;
+    }
     if (err == NO_ERROR) {
         run("BootAnimation", PRIORITY_DISPLAY);
     }
@@ -115,18 +127,22 @@ status_t BootAnimation::initTexture(Texture* texture, AssetManager& assets,
         case SkBitmap::kA8_Config:
             glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, w, h, 0, GL_ALPHA,
                     GL_UNSIGNED_BYTE, p);
+            LOGD("1");
             break;
         case SkBitmap::kARGB_4444_Config:
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
                     GL_UNSIGNED_SHORT_4_4_4_4, p);
+            LOGD("2");
             break;
         case SkBitmap::kARGB_8888_Config:
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA,
                     GL_UNSIGNED_BYTE, p);
+            LOGD("3");
             break;
         case SkBitmap::kRGB_565_Config:
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB,
                     GL_UNSIGNED_SHORT_5_6_5, p);
+            LOGD("4");
             break;
         default:
             break;
@@ -275,6 +291,177 @@ bool BootAnimation::threadLoop()
     return r;
 }
 
+bool BootAnimation::initFont()
+{
+    initTexture(&mFontTex, mAssets, "images/font_10x18.png");
+    glTranslatef(-1,1,0);
+    //glTranslatex(-1<<16,1<<16,0);
+    glScalef(2.0/mWidth,-2.0/mHeight,1);
+    //glScalex((2<<16)/(mWidth<<16),(-2<<16)/(mHeight<<16),1<<16);
+    float xoffset = 0;
+    float yoffset = 0;
+    //GLfixed xoffset = 0;
+    //GLfixed yoffset = 0;
+    mFontWidth = 10;
+    mFontHeight = 18;
+    float fontWidthOffset = float(mFontWidth)/(float)mFontTex.w;
+    float fontHeightOffset = float(mFontHeight)/(float)mFontTex.h;
+    //GLfixed fontWidthOffset = (mFontWidth << 16)/(mFontTex.w << 16);
+    //GLfixed fontHeightOffset = (mFontHeight << 16)/(mFontTex.h << 16);
+    mCols = mWidth / mFontWidth;
+    mRows = mHeight / mFontHeight;
+    for (int x = 0;x<96;x++)
+    {
+        xoffset = (float)(x%24) * fontWidthOffset;
+        yoffset = (float)(x/24) * fontHeightOffset;
+        //xoffset = (x%24) * fontWidthOffset;
+        //yoffset = (x/24) * fontHeightOffset;
+        mFontTexCoords[x*8] = xoffset;
+        mFontTexCoords[x*8+1] = yoffset;
+
+        mFontTexCoords[x*8+2] = xoffset;
+        mFontTexCoords[x*8+3] = yoffset + fontHeightOffset;
+
+        mFontTexCoords[x*8+4] = xoffset + fontWidthOffset;
+        mFontTexCoords[x*8+5] = yoffset;
+
+        mFontTexCoords[x*8+6] = xoffset + fontWidthOffset;
+        mFontTexCoords[x*8+7] = yoffset + fontHeightOffset;
+
+        mFontVert[x*8] = 0;
+        mFontVert[x*8+1] = 0;
+
+        mFontVert[x*8+2] = 0;
+        mFontVert[x*8+3] = mFontHeight;
+
+        mFontVert[x*8+4] = mFontWidth;
+        mFontVert[x*8+5] = 0;
+
+        mFontVert[x*8+6] = mFontWidth;
+        mFontVert[x*8+7] = mFontHeight;
+    }
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+    return true;
+}
+
+bool BootAnimation::initBuffer() {
+    if (mCols > 0 && mRows > 0) {
+        mLineBuffer = new char*[mRows];
+        if (mLineBuffer) {
+            for (int i = 0; i<mRows; i++) {
+                mLineBuffer[i] = new char[mCols + 1];
+                for (int j = 0; j<mCols + 1; j++) {
+                    mLineBuffer[i][j] = '\0';
+                }
+            }
+        }
+    } else {
+        mLineBuffer = NULL;
+    }
+    mBufferPos = 0;
+
+    printLine("Hello to you too!");
+    printLine("Hello to you too!");
+    printLine("this is very long texthis is very long texthis is very long texthis is very long texthis is very long texthis is very long texthis is very long texthis is very long texttttttttthis is very long text");
+    printLine("Hello to you too!");
+    return true;
+}
+
+void BootAnimation::printLine(char *s) {
+    int col = 0;
+    char c;
+    while ((c = *s++))
+    {
+        mLineBuffer[mBufferPos][col++] = c;
+        if (col > mCols) {
+            col = 0;
+            mBufferPos = (mBufferPos + 1) % mRows;
+        }
+    }
+    for (;col<mCols;col++) {
+        mLineBuffer[mBufferPos][col] = '\0';
+    }
+    mBufferPos = (mBufferPos + 1) % mRows;
+}
+
+void BootAnimation::drawText() {
+    glVertexPointer(2,GL_SHORT,0,mFontVert);
+    glTexCoordPointer(2,GL_FLOAT,0,mFontTexCoords);
+    //glTexCoordPointer(2,GL_FIXED,0,mFontTexCoords);
+    glBindTexture(GL_TEXTURE_2D, mFontTex.name);
+    for (int i = 0; i<mRows; i++) {
+        drawLine(mLineBuffer[(mBufferPos + i) % mRows],i);
+    }
+    return;
+}
+
+void BootAnimation::drawLine(char *s,int line)
+{
+    char c = 0;
+    glPushMatrix();
+    //glTranslatex(0,(mFontHeight * line) << 16,0);
+    glTranslatef(0,(mFontHeight * line),0);
+    while ((c = *s++))
+    {
+        c -= 32;
+        if (c<96)
+        {
+            glDrawArrays(GL_TRIANGLE_STRIP,c*4,4);
+            glTranslatex(mFontWidth << 16 ,0,0);
+        }
+    }
+    glPopMatrix();
+
+    return;
+}
+
+bool BootAnimation::initLogDevice() {
+    char devname[] = "/dev/"LOGGER_LOG_MAIN;
+    mLogDevice = open(devname,O_RDONLY|O_NONBLOCK);
+    if (mLogDevice < 0) {
+        LOGE("unable to open log device %s, %s",devname,strerror(errno));
+        return false;
+    }
+    return true;
+}
+
+bool BootAnimation::getLogLine(char** s)
+{
+    if (mLogDevice < 0) {
+        return false;
+        LOGE("log device not open");
+    }
+    union pun{
+        unsigned char buf[LOGGER_ENTRY_MAX_LEN + 1] __attribute__((aligned(4)));
+        struct logger_entry entry __attribute__((aligned(4)));
+    };
+    union pun rdbuf;
+    int ret;
+    ret = read(mLogDevice,rdbuf.buf,LOGGER_ENTRY_MAX_LEN);
+    if (ret < 0) {
+        if (errno == EAGAIN) {
+            return false;
+        } else {
+            LOGE("unable to read from log device %d, %s",mLogDevice,strerror(errno));
+        }
+        return false;
+    }
+    if (ret == 0) {
+        LOGE("unexpected EOF on device %d!",mLogDevice);
+        return false;
+    }
+    AndroidLogEntry processedEntry;
+    if ( 0 != android_log_processLogBuffer(&rdbuf.entry,&processedEntry) ) {
+        LOGE("error processing log buffer");
+        return false;
+    }
+    char *retstr = new char[processedEntry.messageLen + 1];
+    strncpy(retstr,processedEntry.message,processedEntry.messageLen);
+    *s = retstr;
+    return true;
+}
+
 bool BootAnimation::android()
 {
     initTexture(&mAndroid[0], mAssets, "images/android-logo-mask.png");
@@ -295,7 +482,7 @@ bool BootAnimation::android()
     const Rect updateRect(xc, yc, xc + mAndroid[0].w, yc + mAndroid[0].h);
 
     // draw and update only what we need
-    mFlingerSurface->setSwapRectangle(updateRect);
+    //mFlingerSurface->setSwapRectangle(updateRect);
 
     glScissor(updateRect.left, mHeight - updateRect.bottom, updateRect.width(),
             updateRect.height());
@@ -303,6 +490,9 @@ bool BootAnimation::android()
     // Blend state
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glTexEnvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+
+    initFont();
+    initBuffer();
 
     const nsecs_t startTime = systemTime();
     do {
@@ -322,8 +512,12 @@ bool BootAnimation::android()
         glDrawTexiOES(x + mAndroid[1].w, yc, 0, mAndroid[1].w, mAndroid[1].h);
 
         glEnable(GL_BLEND);
+
         glBindTexture(GL_TEXTURE_2D, mAndroid[0].name);
         glDrawTexiOES(xc, yc, 0, mAndroid[0].w, mAndroid[0].h);
+
+        glDisable(GL_SCISSOR_TEST);
+        drawText();
 
         EGLBoolean res = eglSwapBuffers(mDisplay, mSurface);
         if (res == EGL_FALSE)
@@ -337,6 +531,8 @@ bool BootAnimation::android()
 
     glDeleteTextures(1, &mAndroid[0].name);
     glDeleteTextures(1, &mAndroid[1].name);
+    glDeleteTextures(1, &mAndroid[2].name);
+    glDeleteTextures(1, &mFontTex.name);
     return false;
 }
 
@@ -416,6 +612,7 @@ bool BootAnimation::movie()
         }
     }
 
+
     // clear screen
     glShadeModel(GL_FLAT);
     glDisable(GL_DITHER);
@@ -441,6 +638,9 @@ bool BootAnimation::movie()
     Region clearReg(Rect(mWidth, mHeight));
     clearReg.subtractSelf(Rect(xc, yc, xc+animation.width, yc+animation.height));
 
+    initFont();
+    initBuffer();
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     for (int i=0 ; i<pcount && !exitPending() ; i++) {
         const Animation::Part& part(animation.parts[i]);
         const size_t fcount = part.frames.size();
@@ -448,6 +648,11 @@ bool BootAnimation::movie()
 
         for (int r=0 ; !part.count || r<part.count ; r++) {
             for (int j=0 ; j<fcount && !exitPending(); j++) {
+                char* message;
+                while (getLogLine(&message)) {
+                    printLine(message);
+                    delete message;
+                }
                 const Animation::Frame& frame(part.frames[j]);
 
                 if (r > 0) {
@@ -477,6 +682,11 @@ bool BootAnimation::movie()
                     glDisable(GL_SCISSOR_TEST);
                 }
                 glDrawTexiOES(xc, yc, 0, animation.width, animation.height);
+                glDisable(GL_SCISSOR_TEST);
+                glEnable(GL_BLEND);
+                drawText();
+                glDisable(GL_BLEND);
+                glBindTexture(GL_TEXTURE_2D, 0);
                 eglSwapBuffers(mDisplay, mSurface);
 
                 nsecs_t now = systemTime();
@@ -497,6 +707,7 @@ bool BootAnimation::movie()
             }
         }
     }
+    glDeleteTextures(1, &mFontTex.name);
 
     return false;
 }

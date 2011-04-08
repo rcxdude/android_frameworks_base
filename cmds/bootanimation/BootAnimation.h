@@ -83,6 +83,25 @@ private:
     bool android();
     bool movie();
 
+    bool initFont();
+    bool initBuffer();
+    bool initLogDevice();
+    bool getLogLine(char** s);
+    void printLine(char* s);
+    void drawText();
+    void drawLine(char* s, int line);
+    GLshort mFontVert[96*2*4];
+    GLfloat mFontTexCoords[96*2*4];
+    //GLfixed mFontTexCoords[96*2*4];
+    Texture mFontTex;
+    int mCols;
+    int mRows;
+    int mFontWidth;
+    int mFontHeight;
+    int mBufferPos;
+    char** mLineBuffer;
+    int mLogDevice;
+
     sp<SurfaceComposerClient>       mSession;
     AssetManager mAssets;
     Texture     mAndroid[2];

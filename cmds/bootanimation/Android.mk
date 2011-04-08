@@ -18,11 +18,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libcutils \
 	libutils \
 	libbinder \
-    libui \
+	liblog \
+	libui \
 	libskia \
-    libEGL \
-    libGLESv1_CM \
-    libsurfaceflinger_client
+	libEGL \
+	libGLESv1_CM \
+	libsurfaceflinger_client
 
 LOCAL_C_INCLUDES := \
 	$(call include-path-for, corecg graphics)
