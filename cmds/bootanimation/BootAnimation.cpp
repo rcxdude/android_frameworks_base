@@ -18,10 +18,12 @@
 
 #include <stdint.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <math.h>
 #include <fcntl.h>
 #include <utils/misc.h>
 #include <signal.h>
+#include <dirent.h>
 
 #include <linux/input.h>
 
@@ -385,13 +387,44 @@ bool BootAnimation::initLogDevice() {
 }
 
 bool BootAnimation::initInput() {
-    char devname[] = "/dev/input/event3";
-    mInputDevice = open(devname,O_RDONLY|O_NONBLOCK);
-    if (mInputDevice < 0) {
-        LOGE("unable to open input device %s, %s",devname,strerror(errno));
+    DIR *inputdir = opendir("/dev/input/");
+    if (inputdir == 0) {
+        mInputDevice = 0;
+        LOGE("unable to open input device directory");
         return false;
     }
-    return true;
+    struct dirent *de;
+    int fd;
+    while ((de = readdir(inputdir))) { 
+        if (strncmp(de->d_name,"event",5)) {
+            continue;
+        }
+        mInputDevice = openat(dirfd(inputdir),de->d_name,O_RDONLY|O_NONBLOCK);
+        if (mInputDevice < 0) {
+            LOGE("unable to open input device %s, %s",de->d_name,strerror(errno));
+            continue;
+        }
+        uint8_t key_bitmask[KEY_MAX / 8 + 1];
+        memset (key_bitmask,0,sizeof(key_bitmask));
+
+        int ret = ioctl(mInputDevice,EVIOCGBIT(EV_KEY,sizeof(key_bitmask)),key_bitmask);
+        if (ret < 0) {
+            LOGE("error getting keys for device %s, %s",de->d_name,strerror(errno));
+            close(mInputDevice);
+            continue;
+        }
+#define KEY_IN_BITMASK(x,y) ((x)[(y) / 8] & ((1 << (y) % 8)))
+        if (KEY_IN_BITMASK(key_bitmask,KEY_VOLUMEUP) ||
+            KEY_IN_BITMASK(key_bitmask,KEY_VOLUMEDOWN)) {
+            LOGD("found device with required keys: %s", de->d_name);
+            return true;
+        }
+#undef KEY_IN_BITMASK
+        close(mInputDevice);
+        mInputDevice = 0;
+    }
+    LOGE("unable to find input device with required keys");
+    return false;
 }
 
 bool BootAnimation::checkInput() {
