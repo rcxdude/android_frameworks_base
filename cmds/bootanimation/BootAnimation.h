@@ -29,6 +29,8 @@
 #include <EGL/egl.h>
 #include <GLES/gl.h>
 
+#include <android/log.h>
+
 class SkBitmap;
 
 namespace android {
@@ -82,25 +84,35 @@ private:
     status_t initTexture(void* buffer, size_t len);
     bool android();
     bool movie();
+    bool text();
 
     bool initFont();
     bool initBuffer();
     bool initLogDevice();
-    bool getLogLine(char** s);
+    bool processLog();
+    bool initInput();
+    bool checkInput();
     void printLine(char* s);
+    void replaceLine(char* s);
     void drawText();
-    void drawLine(char* s, int line);
-    GLshort mFontVert[96*2*4];
-    GLfloat mFontTexCoords[96*2*4];
-    //GLfixed mFontTexCoords[96*2*4];
+
     Texture mFontTex;
     int mCols;
     int mRows;
     int mFontWidth;
     int mFontHeight;
+
     int mBufferPos;
     char** mLineBuffer;
-    int mLogDevice;
+    enum {
+        N_LOG_DEVICES = 2
+    };
+    int mLogDevices[N_LOG_DEVICES];
+    int mDisplayPriority;
+    int mInputDevice;
+    bool mSwitching;
+
+    int nStartups;
 
     sp<SurfaceComposerClient>       mSession;
     AssetManager mAssets;
@@ -112,7 +124,7 @@ private:
     EGLDisplay  mSurface;
     sp<SurfaceControl> mFlingerSurfaceControl;
     sp<Surface> mFlingerSurface;
-    bool        mAndroidAnimation;
+    bool mAndroidAnimation;
     ZipFileRO   mZip;
 };
 
